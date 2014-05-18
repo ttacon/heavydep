@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"io/ioutil"
-	"os"
+	"io"
+	"os/exec"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/ttacon/heavydep"
 )
@@ -26,16 +27,30 @@ var (
 	pkg           = flag.String("pkg", "", "pkg to inspect")
 	recursiveDeps = flag.Bool("r", false, "recursively investigate dependencies")
 	topDeps       = flag.Int("n", 0, "list most common 'n' dependencies")
-	printGraph    = flag.Bool("g", false, "make a svg of the weighted dependency graph")
+	dotFile       = flag.String("g", "", "filename for the svg output (dependency graph)")
 )
 
 func main() {
 	flag.Parse()
 
+	var (
+		dotFileName string
+		dotFileType string
+	)
+
 	// TODO(ttacon): validate that it is a go package
 	if len(*pkg) == 0 {
 		heavydep.Log("you're mean, actually provide a file")
 		return
+	}
+
+	if len(*dotFile) > 0 {
+		dotFileName = *dotFile
+		dotFileType = getImageFileType(*dotFile)
+		if dotFileType == "" {
+			heavydep.Log("the file type of %q isn't a supported type", dotFileName)
+			return
+		}
 	}
 
 	var imps []*heavydep.WeightedImport
@@ -52,7 +67,9 @@ func main() {
 	}
 
 	display(imps, *topDeps)
-	printDot(*printGraph, imps)
+	if len(dotFileName) > 0 {
+		printDot(imps, dotFileName, dotFileType)
+	}
 }
 
 func display(imps []*heavydep.WeightedImport, maxDisplay int) {
@@ -66,13 +83,9 @@ func display(imps []*heavydep.WeightedImport, maxDisplay int) {
 	}
 }
 
-func printDot(doIt bool, imps []*heavydep.WeightedImport) {
+func printDot(imps []*heavydep.WeightedImport, dotFileName, dotFileType string) {
 	// TODO(ttacon): open dot file in os.TempDir() and actually
 	// execute dot to produce desired file at specified location
-	if !doIt {
-		return
-	}
-
 	buf := bytes.Buffer{}
 
 	buf.WriteString("digraph G {\n")
@@ -84,8 +97,63 @@ func printDot(doIt bool, imps []*heavydep.WeightedImport) {
 	}
 	buf.WriteString("}\n")
 
-	err := ioutil.WriteFile("tmp.dot", buf.Bytes(), os.ModePerm)
+	_, err := exec.LookPath("dot")
 	if err != nil {
-		heavydep.Log("couldn't write file, err: ", err)
+		heavydep.Log("dot doesn't seemed to be installed (or it's not on your path) - not writing %q\n", dotFileName)
+		return
+	}
+
+	cmd := exec.Command("dot", "-T"+dotFileType, "-o"+dotFileName)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		heavydep.Log("failed to retrieve a stdin pipe to the dot, exiting...")
+		return
+	}
+
+	bufLen := buf.Len()
+	written, err := io.Copy(stdin, &buf)
+	if err != nil {
+		heavydep.Log("failed to write all bytes from buf to dot, err: ", err)
+		return
+	}
+
+	if written != int64(bufLen) {
+		heavydep.Log("wrote fewer bytes than expected, wrote %d, expected to write %d\n", written, bufLen)
+		return
+	}
+
+	err = stdin.Close()
+	if err != nil {
+		heavydep.Log("couldn't close stdin pipe to dot, err: ", err)
+		return
+	}
+
+	err = cmd.Run()
+	if err != nil {
+		heavydep.Log("failed to run dot, err: ", err)
+	}
+}
+
+func getImageFileType(filename string) string {
+	pieces := strings.Split(filename, ".")
+	if len(pieces) != 2 {
+		return ""
+	}
+	extension := pieces[1]
+	switch extension {
+	case "png":
+		fallthrough
+	case "jpeg":
+		fallthrough
+	case "bmp":
+		fallthrough
+	case "gif":
+		fallthrough
+	case "jpg":
+		fallthrough
+	case "pdf":
+		return extension
+	default:
+		return ""
 	}
 }
