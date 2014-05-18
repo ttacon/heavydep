@@ -15,7 +15,7 @@ import (
 
 /*
 ROADMAP:
-1) clean up dot interaction
+1) clean up dot interaction ----- DONE
 2) decent validation
 3) allow -v (verbose) error Logging
 4) doc.go
