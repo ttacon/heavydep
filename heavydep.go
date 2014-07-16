@@ -28,8 +28,9 @@ type WeightedImport struct {
 // WeightedImportsForPkgRec provides the same functionality as
 // WeightedImportsForPkg but it recursively investigates each
 // third-party dependency to see how heavily it depends on other
-// third-party dependencies. The returns slice is sorted from
-// most relied upon dependency (heaviest) to least depended on.
+// third-party dependencies. The returned slice is sorted from
+// the most relied upon dependency (heaviest) to the least depended
+// on.
 func WeightedImportsForPkgRec(pkg string) []*WeightedImport {
 	var (
 		imps          = WeightedImportsForPkg(pkg)
@@ -193,6 +194,7 @@ func importsForFile(fileName string) []string {
 	return imports
 }
 
+// TODO(ttacon): Log(err) should be valid too...
 func Log(message string, args ...interface{}) {
 	if message[len(message)-1] != '\n' {
 		message += "\n"
